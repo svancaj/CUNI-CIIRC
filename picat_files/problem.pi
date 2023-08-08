@@ -1,0 +1,171 @@
+% DELIVERY PROBLEM
+% %problem([group(AgentNumber,I,PU,T), group(...),...],[vertex(V,[V,N,E,S,W]), ...])
+
+mks_LB(Problem) = LB =>
+    $problem(_,_,_,LB,_) = Problem.
+
+soc_LB(Problem) = LB =>
+    $problem(_,_,_,_,LB) = Problem.
+
+agents_count(Problem) = AC =>
+    $problem(As,_,_,_,_) = Problem,
+    AC = len(As).
+
+agents(Problem) = As =>
+    $problem(As,_,_,_,_) = Problem.
+
+create_edges(Problem) = EdgesNumber =>
+	Ed1 = [],
+    Ed2 = [],
+	EID = 1,
+
+	foreach(Vertex in Problem.vertices())
+		Neibs = Vertex.neighbours(),
+		foreach(V in Neibs)
+			Ed1 := [$edge(EID, Vertex.vertexID(), V)|Ed1],
+            Ed2 := [$edgeid(EID, Vertex.vertexID(), V)|Ed2],
+			EID := EID + 1
+		end
+	end,
+
+    cl_facts(Ed1,[$edge(-,+,+)]),
+    cl_facts(Ed2,[$edgeid(+,-,-)]),
+    EdgesNumber = len(Ed1).
+
+agentID(Agent) = A =>
+    $agent(A,_,_,_) = Agent.
+
+initial(Agent) = I =>
+    $agent(_,I,_,_) = Agent.
+
+pickup(Agent) = PU =>
+    $agent(_,_,PU,_) = Agent.
+
+target(Agent) = T =>
+    $agent(_,_,_,T) = Agent.
+
+vertices_count(Problem) = VC =>
+    $problem(_,G,_,_,_) = Problem,
+    VC = len(G).
+
+vertices(Problem) = Vs =>
+    $problem(_,Vs,_,_,_) = Problem.
+
+vertexID(Vertex) = V =>
+    $vertex(V,_) = Vertex.
+
+neighbour(Vertex,D) = NV =>
+    $vertex(_,Neibs) = Vertex,
+    NV = Neibs[D].
+
+neighbours(Vertex) = NeibsList =>
+    $vertex(_,Neibs) = Vertex,
+    NeibsShort = delete_all(Neibs, 0),
+    NeibsList = NeibsShort ++ [Vertex.vertexID].
+
+out_edges(Vertex) = OutEdges =>
+	ETMP = [],
+    Neibs = Vertex.neighbours(),
+	foreach(V in Neibs)
+        edge(EID,Vertex.vertexID(),V),
+        ETMP := [EID] ++ ETMP
+	end,
+	OutEdges = ETMP.
+
+distances(Problem) = Dist =>
+    $problem(_,_,Dist,_,_) = Problem.
+
+distance_from_start(Distance) = FS =>
+    $distance(_,FS,_) = Distance.
+
+distance_from_goal(Distance) = FG =>
+    $distance(_,_,FG) = Distance.
+
+preprocess_forward(A, Dist, B) =>
+    foreach (T in 1..len(B))
+        foreach (V in 1..len(B[T,A]))
+            if Dist[V] >= T then
+                B[T,A,V] = 0
+            end
+        end,
+    end.
+
+preprocess_backward(A, Dist, B) =>
+    Mks = len(B),
+    foreach (T in 1..len(B))
+        foreach (V in 1..len(B[T,A]))
+            if Dist[V] > Mks - T then
+                B[T,A,V] = 0
+            end
+        end,
+    end.
+
+preprocess_edges(A, Vertices, B, C) =>
+    foreach (T in 1..len(B)-1)
+        foreach (V in Vertices)
+            if B[T,A,V.vertexID] == 0 then
+                OutEdges = V.out_edges(),
+                foreach (Edge in OutEdges)
+                    C[T,A,Edge] = 0
+                end
+            end
+        end
+    end.
+
+preprocess_forward_split(A, Dist, B) =>
+    foreach (T in 1..len(B))
+        foreach (V in 1..len(B[T,A]))
+            foreach (D in 1..4)
+                if Dist[V] >= T then
+                    B[T,A,V,D] = 0
+                end
+            end,
+        end,
+    end.
+
+preprocess_backward_split(A, Dist, B) =>
+    Mks = len(B),
+    foreach (T in 1..len(B))
+        foreach (V in 1..len(B[T,A]))
+            foreach (D in 1..4)
+                if Dist[V] > Mks - T then
+                    B[T,A,V,D] = 0
+                end
+            end,
+        end,
+    end.
+
+getRotation(1) = [1,2,4].
+getRotation(2) = [1,2,3].
+getRotation(3) = [2,3,4].
+getRotation(4) = [3,4,1].
+
+max_len(_) = 10000.
+
+output_split(Plan) =>
+    printf("plan\n"),
+    foreach (T in 1..len(Plan))
+        foreach (A in 1..len(Plan[T]))
+            foreach (V in 1..len(Plan[T,A]))
+                foreach (D in 1..len(Plan[T,A,V]))
+                    if Plan[T,A,V,D] == 1 then
+                        printf("%d %d ",V, D)
+                    end
+                end
+            end
+        end,
+        printf("\n")
+    end.
+
+output(Plan) =>
+    printf("plan\n"),
+    foreach (T in 1..len(Plan))
+        foreach (A in 1..len(Plan[T]))
+            foreach (V in 1..len(Plan[T,A]))
+                if Plan[T,A,V] == 1 then
+                    printf("%d ",V)
+                end
+            end
+        end,
+        printf("\n")
+    end.

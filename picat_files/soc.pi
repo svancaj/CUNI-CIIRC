@@ -1,0 +1,138 @@
+% Static planner for multi-agent path finding for grid maps and the makespan objective
+% using train motion on agents
+% swap is forbidden
+% variables At + Pass
+
+import sat.
+import problem.
+
+main([ProblemInstanceFile]) =>
+    load(ProblemInstanceFile),
+    ProblemInstance =  getProblemInstance(),
+    Plans = find_plans(ProblemInstance),
+    output(Plans).
+
+find_plans(Problem) = Plans =>
+    MAX_LEN = max_len(classic),
+    EdgesNumber = Problem.create_edges(),
+    member(Delta, 0..MAX_LEN),
+
+    printf("building"),
+    time(Plans = create_clause(Problem, Delta, EdgesNumber, SoC)),
+
+    printf("solving"),
+    %time(solve([$nvars(NVars),$ncls(NCls)],Plans)),
+    %time(solve($[min(SoC), threads, split],Plans)),
+    time(solve(Plans)),
+    NVars = 0,
+    NCls = 0,
+    printf("vars %d\n", NVars),
+    printf("clauses %d\n\n", NCls).
+
+create_clause(Problem, Delta, EdgesNumber, SoC) = B =>
+    AgentsNumber = Problem.agents_count(),
+    VerticesNumber = Problem.vertices_count(),
+    Dist = Problem.distances(),
+    Makespan = Problem.mks_LB() + Delta,
+
+    B = new_array(Makespan,AgentsNumber,VerticesNumber), 
+    C = new_array(Makespan-1,AgentsNumber,EdgesNumber),
+    B::0..1,
+    C::0..1,
+
+    foreach (Agent in Problem.agents)
+        A = Agent.agentID,
+
+        % Initial positions
+        Start = Agent.initial,
+        B[1,A,Start] = 1,
+
+        % Target positions
+        Goal = Agent.target,
+        FS = Dist[A].distance_from_start(),
+        PathLength = FS[Goal],
+
+        B[PathLength + Delta + 1,A,Goal] = 1,
+        foreach (T in PathLength + Delta + 2..Makespan, V in 1..VerticesNumber)
+            if (V !== Goal) then
+                B[T,A,V] = 0
+            else
+                B[T,A,Goal] = 1
+            end
+        end,
+
+        %preprocess_forward(A, Dist[A].distance_from_start(), B),
+        %preprocess_backward(A, Dist[A].distance_from_goal(), B), %todo
+        %preprocess_edges(A,Problem.vertices,B,C)
+    end,
+
+    % Each agent occupies up to one vertex at each time.
+    foreach (T in 1..Makespan, A in 1..AgentsNumber)
+        sum([B[T,A,V] : V in 1..VerticesNumber]) #=< 1
+    end,
+
+    % No two agents occupy the same vertex at any time.
+    foreach(T in 1..Makespan, V in 1..VerticesNumber) 
+        sum([B[T,A,V] : A in 1..AgentsNumber]) #=< 1   
+    end,
+
+    % if an edge is used in one direction, it can not be used in the other direction (no swap)
+    foreach(T in 1..Makespan-1, EID in 1..EdgesNumber) 
+        edgeid(EID, U, V),
+    	edge(OppositeEID, V, U),
+        EList = remove_dups([EID,OppositeEID]),
+    	sum([C[T,A,W] : A in 1..AgentsNumber, W in EList]) #=< 1   
+    end,
+
+    % if an agent is in a node, it needs to move through one of the edges from that node
+    foreach(T in 1..Makespan-1, A in 1..AgentsNumber, Vertex in Problem.vertices()) 
+    	EList = Vertex.out_edges(),
+        B[T,A,Vertex.vertexID] #=> sum([C[T,A,W] : W in EList]) #= 1
+    end,
+
+    % if agent is using an edge, it must arrive to the connected node in next timestep
+    foreach(T in 1..Makespan-1, A in 1..AgentsNumber, EID in 1..EdgesNumber) 
+        edgeid(EID,_,V),
+        C[T,A,EID] #=> B[T+1,A,V] #= 1
+    end.
+
+    % Compute end times and weighted costs %todo
+    %end_time(B,As,K,M, ET),
+    %SoC #= sum([ ET[I,J] : I in 1..K, J in 1..M]),
+    %SoC #=< Delta.
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%
+% UTILITY FUNCTIONS %
+%%%%%%%%%%%%%%%%%%%%%
+
+%  ET[A,T]=1 iff agent A is late at time T (i.e. A is not at its destination at T for T > "lower bound for agent path")
+end_time(B,As,K,MaxT, ET) =>
+    ET = new_array(K,MaxT),
+    ET :: 0..1,
+    foreach (A in 1..K, T in 1..MaxT)
+        shortest_path_cost(As[A],Dist),
+        (_,FV) = As[A],
+        if T > Dist then 
+            #~ B[T,A,FV] #=> ET[A,T],  % agent is not at destination and hence it is late
+            #~ ET[A,T] #=> B[T,A,FV],  % agent is not late and hence must be at destination
+            if T < MaxT then 
+                #~ ET[A,T] #=> #~ ET[A,T+1]  % agent is not late at T and hence cannot be late at T+1
+            end
+        else
+            ET[A,T] = 0  % agent is not late at T because T =< "lower bound for agent path"
+        end
+    end.
+
+% foreach vertex U, if U is at least distance D away from FV,
+% then agent A cannot occupy vertex U at time MaxT, MaxT-1, ..., MaxT-D+1
+preprocess_backward(A,V,FV,Mks,N,B) =>
+    foreach (U in 1..N, FV !== U)
+        foreach (T in Mks..-1..(Mks div 2))
+            if not exist_shorter_path((U,FV),Mks-T) || not exist_shorter_path((V,U),T-1) then
+                B[T,A,U] = 0
+            end
+        end
+    end.

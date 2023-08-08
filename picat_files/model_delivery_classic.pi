@@ -1,0 +1,80 @@
+% vertices = single vertex
+% action_lengths = equal
+% robustness = 1
+
+import sat.
+import problem.
+
+main([ProblemInstanceFile]) =>
+    load(ProblemInstanceFile),
+    ProblemInstance =  getProblemInstance(),
+    Plans = find_plans(ProblemInstance),
+    output(Plans).
+
+find_plans(Problem) = Plans =>
+    LB = Problem.mks_LB(),
+    MAX_LEN = max_len(classic),
+    member(Makespan, LB..MAX_LEN),
+
+    printf("building"),
+    time(Plans = create_clause(Problem, Makespan)),
+
+    printf("solving"),
+    %time(solve([$nvars(NVars),$ncls(NCls)],Plans)),
+    time(solve(Plans)),
+    NVars = 0,
+    NCls = 0,
+    printf("vars %d\n", NVars),
+    printf("clauses %d\n\n", NCls).
+
+create_clause(Problem, Makespan) = B =>
+    AgentsNumber = Problem.agents_count(),
+    VerticesNumber = Problem.vertices_count(),
+    Dist = Problem.distances(),
+
+    B = new_array(Makespan,AgentsNumber,VerticesNumber), 
+    B::0..1,
+
+    foreach (Agent in Problem.agents)
+        A = Agent.agentID,
+
+        % Initial positions
+        I = Agent.initial,
+        B[1,A,I] = 1,
+
+        % Pick up positions - each position is visited at least once by some agent
+        P = Agent.pickup,
+        sum([B[M,A,P] : M in 1..Makespan]) #>= 1,
+
+        % Target positions - each target position is occupied by an agent
+        T = Agent.target,
+        B[Makespan,A,T] = 1,
+
+        preprocess_forward(A, Dist[A].distance_from_start(), B),
+        preprocess_backward(A, Dist[A].distance_from_start(), B)
+    end,
+
+    % Each agent occupies exactly one vertex at each time
+    foreach (Agent in 1..AgentsNumber, Time in 1..Makespan)
+        sum([B[Time,Agent,V] : V in 1..Problem.vertices_count()]) #= 1
+    end,
+
+    % No two agents occupy same vertex
+    foreach (Time in 1..Makespan, V in 1..Problem.vertices_count())
+        sum([B[Time,Agent,V] : Agent in 1..AgentsNumber]) #<= 1
+    end,
+
+    % Only transitions to adjacent free vertices are allowed
+    foreach (Time in 1..Makespan-1, Agent in 1..AgentsNumber, Vertex in Problem.vertices())
+        % Agent can move only to any adjacent vertex or do nothing
+        V = Vertex.vertexID(),
+        Neibs = Vertex.neighbours(),
+        B[Time,Agent,V] #=> (B[Time+1,Agent,V] + sum([B[Time+1,Agent,NV] : NV in Neibs])) #= 1
+    end,
+    
+    % ROBUSTNESS: For each position of each agent at each time, there was not another agent in time-1
+    K = 1, %robustness constant
+    foreach (Time in (1+K)..Makespan, Agent in 1..AgentsNumber, Vertex in Problem.vertices())
+        V = Vertex.vertexID(),
+        B[Time,Agent,V] #=> sum([B[Time-I,A,V] : I in 1..K, A in 1..Agent, A != Agent]) #= 0,
+    end.

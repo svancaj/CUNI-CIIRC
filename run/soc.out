@@ -1,0 +1,23 @@
+building
+CPU time 0.078 seconds.
+
+solving
+CPU time 0.125 seconds.
+
+vars 0
+clauses 0
+
+plan
+98 99 100 
+97 86 101 
+84 85 88 
+71 84 75 
+61 71 62 
+51 61 52 
+41 51 42 
+31 41 32 
+19 31 23 
+20 19 22 
+8 20 10 
+8 21 10 
+8 9 10 
