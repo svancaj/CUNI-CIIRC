@@ -1,0 +1,147 @@
+% Static planner for multi-agent path finding for grid maps and the makespan objective
+% swap is forbidden
+% variables At
+% vertices = splitted into 4
+% action_lengths = equal
+% robustness = 1
+
+import sat.
+import problem.
+
+main([ProblemInstanceFile]) =>
+    load(ProblemInstanceFile),
+    ProblemInstance =  getProblemInstance(),
+    Plans = find_plans(ProblemInstance),
+    output_split_all(Plans).
+
+find_plans(Problem) = Solutions =>
+    MAX_LEN = max_len(split),
+    member(Delta, 1..MAX_LEN),
+
+    printf("building"),
+    time(Plans = create_clause(Problem, Delta)),
+
+    printf("solving"),
+    time(solve(Plans)),
+
+    printf("building"),
+    time(PlansNew = create_clause(Problem, Delta)),
+    printf("solving"),
+    time(Solutions = solve_all([$limit(10)],PlansNew)),
+
+    NVars = 0,
+    NCls = 0,
+    printf("vars %d\n", NVars),
+    printf("clauses %d\n\n", NCls).
+
+create_clause(Problem, Delta) = B =>
+    AgentsNumber = Problem.agents_count(),
+    VerticesNumber = Problem.vertices_count(),
+    Dist = Problem.distances(),
+    Makespan = Problem.mks_LB() + Delta,
+
+    B = new_array(Makespan,AgentsNumber,VerticesNumber,4), % each vertex is splited into 4
+    B::0..1,
+
+    foreach (Agent in Problem.agents)
+        A = Agent.agentID,
+
+        % Initial positions
+        Start = Agent.initial,
+        B[1,A,Start,1] = 1,
+
+        % Target positions
+        Goal = Agent.target,
+        FS = Dist[A].distance_from_start(),
+        PathLength = FS[Goal],
+
+        B[PathLength + Delta + 1,A,Goal,1] = 1,
+        foreach (T in PathLength + Delta + 2..Makespan, V in 1..VerticesNumber)
+            if (V !== Goal) then
+                foreach (D in 1..4)
+                    B[T,A,V,D] = 0
+                end,
+            else
+                B[T,A,Goal,1] = 1
+            end
+        end,
+
+        preprocess_forward_split(A, Dist[A].distance_from_start(), B),
+        preprocess_backward_split(A, Dist[A].distance_from_goal(), B)
+    end,
+
+    %printf("done varaibles \n"),
+
+    % Each agent occupies exactly one vertex at each time
+    foreach (Agent in 1..AgentsNumber, Time in 1..Makespan)
+        sum([B[Time,Agent,V,D] : V in 1..Problem.vertices_count(), D in 1..4]) #= 1
+    end,
+
+    % No two agents occupy same vertex
+    foreach (Time in 1..Makespan, V in 1..Problem.vertices_count())
+        sum([B[Time,Agent,V,D] : Agent in 1..AgentsNumber, D in 1..4]) #<= 1
+    end,
+
+    %printf("done const \n"),
+
+    % Only transitions to adjacent free vertices are allowed
+    foreach (Time in 1..Makespan-1, Agent in 1..AgentsNumber, Vertex in Problem.vertices(), D in 1..4)
+        % Agent can move only to adjacent vertex in its direction, change direction or do nothing
+        V = Vertex.vertexID(),
+        NV = Vertex.neighbour(D),
+        if(NV !== 0) then
+            B[Time,Agent,V,D] #=>
+                (B[Time+1,Agent,NV,D] + sum([B[Time+1,Agent,V,NewRotation] : NewRotation in getRotation(D)])) #= 1
+        else
+            B[Time,Agent,V,D] #=>
+                sum([B[Time+1,Agent,V,NewRotation] : NewRotation in getRotation(D)]) #= 1
+        end,
+        
+    end,
+
+    %printf("done transition \n"),
+    
+    % ROBUSTNESS: For each position of each agent at each time, there was not another agent in time-1
+    K = 1, %robustness constant
+    foreach (Time in (1+K)..Makespan, Agent in 1..AgentsNumber, Vertex in Problem.vertices(), D in 1..4)
+        V = Vertex.vertexID(),
+        B[Time,Agent,V,D] #=>
+                sum([B[Time-I,A,V,DN] : I in 1..K, A in 1..Agent, A != Agent, DN in 1..4]) #= 0,
+    end,
+
+    %printf("done robust \n"),
+
+    % Compute end times and weighted costs %todo
+    ET = end_time(Problem, B),
+    sum([ ET[I,J] : I in 1..AgentsNumber, J in 1..Makespan]) #= Delta.
+
+    %printf("done soc \n").
+
+%%%%%%%%%%%%%%%%%%%%%
+% UTILITY FUNCTIONS %
+%%%%%%%%%%%%%%%%%%%%%
+
+%  ET[A,T]=1 iff agent A is late at time T (i.e. A is not at its destination at T for T > "lower bound for agent path")
+end_time(Problem, B) = ET =>
+    AgentsNumber = Problem.agents_count(),
+    Agents = Problem.agents,
+    Dist = Problem.distances(),
+    Makespan = len(B),
+    ET = new_array(AgentsNumber, Makespan),
+    ET :: 0..1,
+    foreach (A in 1..AgentsNumber, T in 1..Makespan)
+        Goal = Agents[A].target,
+        FS = Dist[A].distance_from_start(),
+        PathLength = FS[Goal],
+
+        if T > PathLength then 
+            #~ B[T,A,Goal,1] #=> ET[A,T],  % agent is not at destination and hence it is late
+            #~ ET[A,T] #=> B[T,A,Goal,1],  % agent is not late and hence must be at destination
+            ET[A,T] #=0 #<=> B[T,A,Goal,1] #=1,
+            if T < Makespan then 
+                #~ ET[A,T] #=> #~ ET[A,T+1]  % agent is not late at T and hence cannot be late at T+1
+            end
+        else
+            ET[A,T] = 0  % agent is not late at T because T =< "lower bound for agent path"
+        end
+    end.

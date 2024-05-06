@@ -93,6 +93,39 @@ def pick(args, agents: list, map: GridMap) -> int:
 				return -1
 			continue
 
+		########################
+		## Split Picat models ##
+		########################
+  
+		if args.solver == "picat-soc-split":
+			teg = TEGClassic(agents, map)
+			log = Logger(args.scenario, map.map_file, args.solver, "soc", current_agents, delivery=False, rotation=True)
+
+			process = Process(target=picatSocSplit, args=(args, agents, current_agents, map, teg, log))
+
+			process.start()
+			process.join(timeout=args.timeout)
+			if process.is_alive():
+				process.terminate()
+				print("Timeout: No solution found in the given time")
+				return -1
+			continue
+
+
+		if args.solver == "picat-soc-split-all":
+			teg = TEGClassic(agents, map)
+			log = Logger(args.scenario, map.map_file, args.solver, "soc", current_agents, delivery=False, rotation=True)
+
+			process = Process(target=picatSocSplitAll, args=(args, agents, current_agents, map, teg, log))
+
+			process.start()
+			process.join(timeout=args.timeout)
+			if process.is_alive():
+				process.terminate()
+				print("Timeout: No solution found in the given time")
+				return -1
+			continue
+
 		print("Unknown model", args.solver)
 		return -2
 	return 0
@@ -163,3 +196,39 @@ def picatSoc(args, agents: list, current_agents: int, map: GridMap, teg: TEGClas
 
 	plan = PicatReader.readClassic(current_agents, output_file, log)
 	log.makeOutput(args, agents, map, plan, plan_file)
+
+def picatSocSplit(args, agents: list, current_agents: int, map: GridMap, teg: TEGClassic, log: Logger) -> None:
+	instance_file = "picat_files/soc_split_input.pi"
+	output_file = "run/soc_split.out"
+	plan_file = "plans/soc_split.sol"
+
+	timer_start = time.time()
+	PicatPrinter.printInstance(args, agents, current_agents, map, instance_file, "classic", teg, log)
+	log.pythonTime += int((time.time() - timer_start)*1000)
+
+	f = open(output_file, "w")
+	subprocess.run(["timeout", str(args.timeout + 2), "picat_files/picat", "picat_files/soc_split.pi", instance_file], stdout=f) 
+	f.close()
+
+	plan = PicatReader.readSplit(current_agents, output_file, log)
+	log.makeOutput(args, agents, map, plan, plan_file)
+
+def picatSocSplitAll(args, agents: list, current_agents: int, map: GridMap, teg: TEGClassic, log: Logger) -> None:
+	instance_file = "picat_files/soc_split_input.pi"
+	output_file = "run/soc_split_all.out"
+	plan_file = "plans/soc_split"
+
+	timer_start = time.time()
+	PicatPrinter.printInstance(args, agents, current_agents, map, instance_file, "classic", teg, log)
+	log.pythonTime += int((time.time() - timer_start)*1000)
+
+	f = open(output_file, "w")
+	subprocess.run(["timeout", str(args.timeout + 2), "picat_files/picat", "picat_files/soc_split_all.pi", instance_file], stdout=f) 
+	f.close()
+
+	plans = PicatReader.readSplitMulti(current_agents, output_file, log)
+
+	plan_nr = 0
+	for plan in plans:
+		log.makeOutput(args, agents, map, plan, plan_file+str(plan_nr)+".sol")
+		plan_nr += 1

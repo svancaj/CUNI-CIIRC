@@ -100,6 +100,18 @@ preprocess_backward(A, Dist, B) =>
         end,
     end.
 
+
+%TODO - fix for soc
+preprocess_backward_soc(A, Dist, B, PathLength, Delta) =>
+    Mks = len(B),
+    foreach (T in 1..len(B))
+        foreach (V in 1..len(B[T,A]))
+            if Dist[V] > Mks - T then
+                B[T,A,V] = 0
+            end
+        end,
+    end.
+
 preprocess_edges(A, Vertices, B, C) =>
     foreach (T in 1..len(B)-1)
         foreach (V in Vertices)
@@ -141,6 +153,13 @@ getRotation(3) = [2,3,4].
 getRotation(4) = [3,4,1].
 
 max_len(_) = 10000.
+
+output_split_all(AllPlans) =>
+    foreach (P in 1..len(AllPlans))
+        output_split(AllPlans[P]),
+        printf("\n")
+    end.
+
 
 output_split(Plan) =>
     printf("plan\n"),

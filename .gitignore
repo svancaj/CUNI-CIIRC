@@ -1,0 +1,4 @@
+plans/*
+run/*
+picat_files/*.qi
+__pycache__

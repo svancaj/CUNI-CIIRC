@@ -61,9 +61,9 @@ create_clause(Problem, Delta, EdgesNumber, SoC) = B =>
             end
         end,
 
-        %preprocess_forward(A, Dist[A].distance_from_start(), B),
-        %preprocess_backward(A, Dist[A].distance_from_goal(), B), %todo
-        %preprocess_edges(A,Problem.vertices,B,C)
+        preprocess_forward(A, Dist[A].distance_from_start(), B),
+        preprocess_backward_soc(A, Dist[A].distance_from_goal(), B, PathLength, Delta),
+        preprocess_edges(A,Problem.vertices,B,C)
     end,
 
     % Each agent occupies up to one vertex at each time.
@@ -94,12 +94,12 @@ create_clause(Problem, Delta, EdgesNumber, SoC) = B =>
     foreach(T in 1..Makespan-1, A in 1..AgentsNumber, EID in 1..EdgesNumber) 
         edgeid(EID,_,V),
         C[T,A,EID] #=> B[T+1,A,V] #= 1
-    end.
+    end,
 
     % Compute end times and weighted costs %todo
-    %end_time(B,As,K,M, ET),
-    %SoC #= sum([ ET[I,J] : I in 1..K, J in 1..M]),
-    %SoC #=< Delta.
+    ET = end_time(Problem, B),
+    SoC #= sum([ ET[I,J] : I in 1..AgentsNumber, J in 1..Makespan]),
+    SoC #=< Delta.
 
 
 
@@ -109,30 +109,25 @@ create_clause(Problem, Delta, EdgesNumber, SoC) = B =>
 %%%%%%%%%%%%%%%%%%%%%
 
 %  ET[A,T]=1 iff agent A is late at time T (i.e. A is not at its destination at T for T > "lower bound for agent path")
-end_time(B,As,K,MaxT, ET) =>
-    ET = new_array(K,MaxT),
+end_time(Problem, B) = ET =>
+    AgentsNumber = Problem.agents_count(),
+    Agents = Problem.agents,
+    Dist = Problem.distances(),
+    Makespan = len(B),
+    ET = new_array(AgentsNumber, Makespan),
     ET :: 0..1,
-    foreach (A in 1..K, T in 1..MaxT)
-        shortest_path_cost(As[A],Dist),
-        (_,FV) = As[A],
-        if T > Dist then 
-            #~ B[T,A,FV] #=> ET[A,T],  % agent is not at destination and hence it is late
-            #~ ET[A,T] #=> B[T,A,FV],  % agent is not late and hence must be at destination
-            if T < MaxT then 
+    foreach (A in 1..AgentsNumber, T in 1..Makespan)
+        Goal = Agents[A].target,
+        FS = Dist[A].distance_from_start(),
+        PathLength = FS[Goal],
+
+        if T > PathLength then 
+            #~ B[T,A,Goal] #=> ET[A,T],  % agent is not at destination and hence it is late
+            #~ ET[A,T] #=> B[T,A,Goal],  % agent is not late and hence must be at destination
+            if T < Makespan then 
                 #~ ET[A,T] #=> #~ ET[A,T+1]  % agent is not late at T and hence cannot be late at T+1
             end
         else
             ET[A,T] = 0  % agent is not late at T because T =< "lower bound for agent path"
-        end
-    end.
-
-% foreach vertex U, if U is at least distance D away from FV,
-% then agent A cannot occupy vertex U at time MaxT, MaxT-1, ..., MaxT-D+1
-preprocess_backward(A,V,FV,Mks,N,B) =>
-    foreach (U in 1..N, FV !== U)
-        foreach (T in Mks..-1..(Mks div 2))
-            if not exist_shorter_path((U,FV),Mks-T) || not exist_shorter_path((V,U),T-1) then
-                B[T,A,U] = 0
-            end
         end
     end.
