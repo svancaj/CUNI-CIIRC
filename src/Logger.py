@@ -81,6 +81,8 @@ class Logger:
 		pl.write("\n")
 		pl.write("solution=\n")
 
+		plan = plan[:self.mksFound]
+
 		for t in range(len(plan)):
 			pl.write(str(t) + ":")
 			for a in range(len(plan[t])):
@@ -95,7 +97,14 @@ class Logger:
 		return
 
 	def getMKS(self, agents: list, map: GridMap, plan: list) -> int:
-		self.mksFound = len(plan)
+		mks = 0
+		for a in range(self.agents):
+			last = plan[len(plan)-1][a]
+			for t in reversed(range(len(plan))):
+				if plan[t][a] != last:
+					mks = max(mks, t+2)
+					continue
+		self.mksFound = mks
 		return self.mksFound
 	
 	def getSOC(self, agents: list, map: GridMap, plan: list) -> int:
