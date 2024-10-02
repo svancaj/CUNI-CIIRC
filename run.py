@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+import os 
 
 from src import MapLoader
 from src import ScenLoader
@@ -72,6 +73,14 @@ def get_parser() -> ArgumentParser:
 	return parser
 
 def main(args_list: list = []) -> None:
+
+	run_dir = "run"
+	if not os.path.isdir(run_dir):
+		os.makedirs(run_dir)
+	
+	plan_dir = "plans"
+	if not os.path.isdir(plan_dir):
+		os.makedirs(plan_dir)
 	
 	# parse arguments
 	parser = get_parser()

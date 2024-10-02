@@ -16,7 +16,7 @@ main([ProblemInstanceFile]) =>
 
 find_plans(Problem) = Solutions =>
     MAX_LEN = max_len(split),
-    member(Delta, 116..MAX_LEN),
+    member(Delta, 1..MAX_LEN),
 
     printf("building with delta %d", Delta),
     time(Plans = create_clause(Problem, Delta)),
